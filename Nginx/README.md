@@ -1,5 +1,5 @@
 # NGINX notes
-![nginx](./nginx.png)
+![nginx](./Nginx.png)
 
 > free , open source , BSD license , developed by Igor Sysoev to solve _C10K_ problem "challenge to handel 10000 concurent connection" _concurent connection is multiple connections at the same time_ 
 
@@ -218,7 +218,7 @@ upstream backend {
             }
         }
 ```
-* ![reverse,forward_proxy](./Difference_between_Forward_Proxy_and_Reverse_Proxy.webp)
+* ![reverse,forward_proxy](./Difference_between_Forward_and_Reverse_Proxy.webp)
 
 
 ## 5. Caching :
@@ -593,7 +593,7 @@ location /api {
     auth_basic_user_file conf/htpasswd;
 }
 ```
-4. http headers [http_headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers)
+4. [http headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers)
 
 * ##### Example
 ```
@@ -654,6 +654,7 @@ server {
 location /admin {
         # Enforce request limit for this location
         limit_req zone=req_limit_per_ip;
+}
 ```
 
 * Global Rate Limit Settings (nginx.conf)
