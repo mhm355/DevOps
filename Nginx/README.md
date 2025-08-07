@@ -20,8 +20,52 @@
  
             _https encrypted TLS/SSL "transport layer security and secure sockets layer" "protocols used to encrypt communication betwwen client and server",TLS 1.2 Widely Used in Production environments, TLS 1.3 is Best performance and security_
             
->> #### http response status code            
-  
+>> ### [Http Response Status Code](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status)
+
+1. **Informational**
+
+| code | message | discrepstion |
+| --- | --- | --- |
+| 100 | continue | the initial part of a request has been received by the server and has not yet been rejected. |
+| 101 | Switching Protocols | This code is sent in response to an Upgrade request header from the client and indicates the protocol the server is switching to. |
+| 102 | Processing | the server has received and is currently processing a full request, but no final response is available yet. |
+| 103 | Early Hints | server can send to a client while it is still preparing the final response to a request. |            
+
+2. **Success**
+
+| code | message | discrepstion |
+| --- | --- | --- |
+| 200 | ok | client's request to a server has been successfully processed.success depends on HTTP method |
+| 201 | Created | The request was successful, and a new resource was created as a result (after a POST or PUT request). |
+| 204 | No Content | The server successfully processed the request, but there is no content to return (e.g., a successful DELETE operation). |
+
+3. **Redirection**
+
+| code | message | discrepstion |
+| --- | --- | --- |
+| 301 | Moved Permanently | The requested resource has been permanently moved to a new URL. |
+| 302 | Found (Temporary Redirect) | The requested resource is temporarily located at a different URL. |
+| 304 | Not Modified | The client's cached version of the resource is still valid, and no new content needs to be sent. |
+
+4. **Client Error**
+
+| code | message | discrepstion |
+| --- | --- | --- |
+| 400 | Bad Request |  The server cannot process the request due to malformed syntax (e.g., an invalid URL or incorrect parameters). |
+| 401 | Unauthorized | The request requires user authentication. |
+| 402 | Payment Required | requested content is not available until the client makes a successful payment. |
+| 403 | Forbidden | The server understood the request but refuses to authorize it, typically due to insufficient permissions. | 
+| 404 | Not Found | The most widely recognized error code, indicating the server could not find the requested resource. |
+
+5. **Server Error** 
+
+| code | message | discrepstion |
+| --- | --- | --- |
+| 500 | Internal Server Error | A generic error indicating an unexpected condition on the server prevented it from fulfilling the request. |
+| 501 | Not Implemented | indicates that the server does not support the functionality required to fulfill the request. |
+|502 | Bad Gateway | ndicates that a server, while acting as a gateway or proxy, received an invalid response from an upstream server. |
+| 503 | Service Unavailable|  The server is temporarily unable to handle the request, often due to maintenance or overload. |
+
   
 >>> ### NGINX Worker Processes
      Worker processes handling client connections and processing requests. _The master process manages these workers_, including starting, stopping, and reloading them.
@@ -317,7 +361,7 @@ server {
 
 > **Debian**
 
->> [ufw](https://help.ubuntu.com/community/UFW)
+>> [UFW - Uncomplicated Firewall](https://help.ubuntu.com/community/UFW)
 
 >> ufw enable
 
@@ -333,7 +377,7 @@ server {
 
 > **Redhat**
 
->> [firewalld](https://firewalld.org/documentation/)
+>> [Firewalld](https://firewalld.org/documentation/)
 
 >> systemctl start firewall-cmd
 
