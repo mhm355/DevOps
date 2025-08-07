@@ -904,6 +904,9 @@ location /nginx_status {
 
         
 ## References
-> [nginx_documentation](https://nginx.org/en/docs/index.html)
-> [kodekloud_nginx_notes](https://notes.kodekloud.com/docs/Nginx-For-Beginners/Install-Config/Nginx-Overview)
+* [nginx_documentation](https://nginx.org/en/docs/index.html)
+
+* [kodekloud_nginx_notes](https://notes.kodekloud.com/docs/Nginx-For-Beginners/Install-Config/Nginx-Overview)
+
+* [freecodecamp_nginx-handbook](https://www.freecodecamp.org/news/the-nginx-handbook/#heading-introduction-to-nginxs-configuration-files)
 
