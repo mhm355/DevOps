@@ -1,0 +1,28 @@
+services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    container_name: jenkins
+    privileged: true
+    ports:
+      - "8080:8080"     # Jenkins UI
+      - "50000:50000"   # Jenkins agent communication
+    volumes:
+      - jenkins_jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock  # Enable Docker-in-Docker
+      - /usr/bin/docker:/usr/bin/docker
+    networks:
+      - jenkins_network
+    environment:
+      - JENKINS_OPTS=--httpPort=8080
+      - JAVA_OPTS=-Xmx2048m -Djenkins.install.runSetupWizard=false
+    restart: unless-stopped
+
+volumes:
+  jenkins_jenkins_home:
+    name: jenkins_jenkins_home
+networks:
+  jenkins_network:
+    name: jenkins_network
+    driver: bridge
