@@ -7,7 +7,7 @@
 
 ### 1. Stacked etcd topology
 
-![kubeadm-ha-topology-stacked-etcd](kubeadm-ha-topology-stacked-etcd.svg)
+![kubeadm-ha-topology-stacked-etcd](./screenshots/kubeadm-ha-topology-stacked-etcd.svg)
 
 * distributed data storage cluster provided by etcd is stacked on top of the cluster formed by the nodes managed by kubeadm that run control plane components.
 
@@ -20,7 +20,7 @@
 
 ### 2. External etcd topology
 
-![kubeadm-ha-topology-external-etcd](kubeadm-ha-topology-external-etcd.svg)
+![kubeadm-ha-topology-external-etcd](./screenshots/kubeadm-ha-topology-external-etcd.svg)
 
 * the distributed data storage cluster provided by etcd is external to the cluster formed by the nodes that run control plane components.
 
@@ -50,3 +50,40 @@
 
 
 
+
+## Manage Cluster
+
+1. Drain Nodes
+
+* Evicts all pods 'non-daemonset pods' from a node  and then marks the node as "unschedulable" This prevents new pods from being scheduled onto that node
+
+* used to perform maintenance that requires the node to be completely free of workloads, such as OS upgrades, hardware replacement, or kernel patching.
+
+* `kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --force  --grace-period=0`
+
+    `--ignore-daemonsets` : DaemonSet-managed pods are not evicted.
+    `--delete-emptydir-data` : Deletes pods with emptyDir volumes (temporary storage).
+    `--force` and `--grace-period=0` to forcibly evict pods.
+
+2. Cordon Nodes
+
+* Marks a node as "unschedulable" This prevents new pods from being scheduled onto that node.
+
+* Existing pods remain unaffected.
+
+* used to prevent new workloads from landing on a node that might be undergoing preparation for maintenance
+
+* `kubectl cordon <node-name>`
+
+
+3. Uncordon Node
+
+* Allow schedualing to the node again, node will accept new pods.
+
+* `kubectl uncordon <node-name>`
+
+
+![drain-vs-cordon-node](./screenshots/drain-vs-cordon-node.png)
+
+
+4. 
