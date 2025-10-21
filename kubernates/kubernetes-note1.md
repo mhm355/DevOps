@@ -110,6 +110,8 @@
 
 ## Role Based Access Control (RBAC)
 
+* [doc-link](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
+
 * uses the `rbac.authorization.k8s.io` API group 
 
 *  security mechanism that regulates access to Kubernetes API resources
@@ -246,3 +248,18 @@ rules:
   resources: ["crontabs"]
   verbs: ["get", "list", "watch"]
 ```
+
+### ServiceAccount
+
+* used by the container process to authenticate  with the K8S API 
+
+* Kubernetes automatically assigns the ServiceAccount named default in default namespace.
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: build-robot
+automountServiceAccountToken: false
+```
+
