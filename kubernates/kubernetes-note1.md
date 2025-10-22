@@ -263,3 +263,417 @@ metadata:
 automountServiceAccountToken: false
 ```
 
+![rbac](./screenshots/rbac.png)
+
+
+## Application Configuration
+
+* k8s allow pass dynamic configuration values at the application runtime which control its workflow
+
+
+1. __ConfiMap__
+
+* used to assign non-sensitive configuration
+
+* key value format
+
+* data stored in a ConfigMap cannot exceed 1 MiB
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: game-demo
+data:
+
+  # property-like keys; each key maps to a simple value
+  player_initial_lives: "3"
+  ui_properties_file_name: "user-interface.properties"
+
+  # file-like keys
+  game.properties: |
+    enemy.types=aliens,monsters
+    player.maximum-lives=5    
+  user-interface.properties: |
+    color.good=purple
+    color.bad=yellow
+    allow.textmode=true
+
+immutable: true  # set the configmap immutable
+```
+
+
+* ways to use ConfigMap in the pod containers
+
+    * Inside a container command and args
+    * Environment variables for a container
+    * Add a file in read-only volume, for the application to read
+    * Write code to run inside the Pod that uses the Kubernetes API to read a ConfigMap
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-demo-pod
+spec:
+  containers:
+    - name: demo
+      image: alpine
+      command: ["sleep", "3600"]
+      env:
+        # Define the environment variable
+        - name: PLAYER_INITIAL_LIVES # Notice that the case is different here
+                                     # from the key name in the ConfigMap.
+          valueFrom:
+            configMapKeyRef:
+              name: game-demo           # name of the  ConfigMap 
+              key: player_initial_lives # The key to fetch.
+        - name: UI_PROPERTIES_FILE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: game-demo
+              key: ui_properties_file_name
+
+      # or use this 
+
+      #envFrom:
+      #  - configMapRef:
+      #      name: myconfigmap    # name of the configmap
+
+
+      volumeMounts:
+      - name: config
+        mountPath: "/config"  # inside the container
+        readOnly: true
+        # defaultMode: 0444 # Read-only permissions for owner, group, and others
+  volumes:
+  # You set volumes at the Pod level, then mount them into containers inside that Pod
+  - name: config
+    configMap:
+      # Provide the name of the ConfigMap you want to mount.
+      name: game-demo
+      # An array of keys from the ConfigMap to create as files
+      items:
+      - key: "game.properties"
+        path: "game.properties"
+      - key: "user-interface.properties"
+        path: "user-interface.properties"
+        
+```
+
+2. __Secrets__
+
+* used to configure the sensitive data
+
+* key value format
+
+* command to encrypt a text `echo -n "some-text" | base64 `
+
+* [types of secrets](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types)
+
+  * Opaque  : default Secret type
+
+    we must use `kubectl create secret generic <...>`
+
+
+
+
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dotfile-secret
+data:
+  .secret-file: dmFsdWUtMg0KDQo=
+type: Opaque
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secret-dotfiles-pod
+spec:
+  volumes:
+    - name: secret-volume
+      secret:
+        secretName: dotfile-secret
+  containers:
+    - name: dotfile-test-container
+      image: registry.k8s.io/busybox
+      command:
+        - ls
+        - "-l"
+        - "/etc/secret-volume"
+      volumeMounts:
+        - name: secret-volume
+          readOnly: true
+          mountPath: "/etc/secret-volume"
+```
+
+
+## Pods
+
+### Containers Resources (cpu & memory)
+
+* Resource Request
+
+  * request amount of that system resource specifically for that container to use
+
+  * `kube-scheduler` uses this information to decide which node to place the Pod
+
+* Resource Limt
+
+  * `kubelet` enforces those limits so that the running container is not allowed to use more of that resource than the limit you set
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+spec:
+# we can assign resources for the pod and its container
+  resources:
+    limits:
+      cpu: "1"
+      memory: "200Mi"
+    requests:
+      cpu: "1"
+      memory: "100Mi"
+
+  containers:
+  - name: log-aggregator
+    image: images.my-company.example/log-aggregator:v6
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"   # m is millicpu or millicores
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+```
+
+### Container HealthCheck
+
+1. Liveness probes 
+
+* determine when to restart a container
+
+* if a container fails its liveness probe repeatedly, the kubelet restarts the container.
+
+* do not wait for readiness probes to succeed, we can use startup probe in this case
+
+
+2. Readiness probes
+
+* determine when a container is ready to accept traffic, end-end healthcheck lifecycle
+
+* used when the app establishing network connections, loading files, and warming caches
+
+* run on the container during its whole lifecycle
+
+3. startup probe
+
+* verifies whether the application within a container is started.
+
+* if configured, it disables liveness and readiness checks until it succeeds.
+
+
+![healthcheck](./screenshots/healthcheck.png)
+
+
+> we can define the probes using
+
+  * command in the container 
+
+  * HTTP request
+
+  * [TCP socket](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-tcp-liveness-probe)
+
+  * [gRPC](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-grpc-liveness-probe)
+
+
+4. _examples_
+
+* 
+```yaml
+#....
+
+spec:
+  containers:
+  - name: liveness
+    image: registry.k8s.io/busybox:1.27.2
+    args:
+    - /bin/sh
+    - -c
+    - touch /tmp/healthy; sleep 30; rm -f /tmp/healthy; sleep 600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+      initialDelaySeconds: 5   # tells kubelet that it should wait 5 seconds before performing the first probe
+      periodSeconds: 5         # kubelet should perform a liveness probe every 5 seconds
+
+---
+
+#....
+
+spec:
+  containers:
+  - name: liveness
+    image: registry.k8s.io/e2e-test-images/agnhost:2.40
+    args:
+    - liveness
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+        httpHeaders:
+        - name: Custom-Header
+          value: Awesome
+      initialDelaySeconds: 3
+      periodSeconds: 3
+
+```
+
+* 
+```yaml
+#....
+ports:
+- name: liveness-port
+  containerPort: 8080
+
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: liveness-port
+  failureThreshold: 30    # the application will have a maximum of 5 minutes (30 * 10 = 300s) to finish its startup, If the startup probe never succeeds, the container is killed after 300s, then restart the pod.
+  periodSeconds: 10
+```
+
+* 
+```yaml
+
+readinessProbe:
+  exec:
+    command:
+    - cat
+    - /tmp/healthy
+  initialDelaySeconds: 5
+  periodSeconds: 5
+```
+
+
+* configure the probes doc
+
+> [doc1](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes)
+
+
+
+### Restart Policies
+
+* k8s has the abaility to restart the container when it fails
+
+
+1. Always
+
+  * default policy
+
+  * even if run successfully
+
+2. OnFailuer
+
+  * only when container process exit with error code
+
+  * when liveness probe detect that the container is unhealthy
+
+3. Never
+
+  * conatiner never restart even liveness probe detect that the container unhealthy 
+
+
+```yaml
+
+#...
+spec:
+  restartPolicy: OnFailure   # restart policy for the pod
+
+  containers:
+
+  - name: try-once-container    # This container will run only once because the restartPolicy is Never.
+    image: docker.io/library/busybox:1.28
+    command: ['sh', '-c', 'echo "Only running once" && sleep 10 && exit 1']
+    restartPolicy: Never     # restart policy for the container
+
+  - name: on-failure-container  # This container will be restarted on failure.
+    image: docker.io/library/busybox:1.28
+    command: ['sh', '-c', 'echo "Keep restarting" && sleep 1800 && exit 1']
+```
+
+
+### SideCar Container
+
+* are the secondary containers that run along with the main application container within the same Pod
+
+* remain running after Pod startup
+
+* have their own independent lifecycles
+
+* support probes to control their lifecycle.
+
+* Shares the same network and storage as the main app.
+
+*  used to enhance or to extend the functionality of the primary app container by providing additional services, or functionality such as logging, monitoring, security, or data synchronization, without directly altering the primary application code.
+
+
+```yaml
+spec:
+      containers:
+        - name: myapp
+          image: alpine:latest
+          command: ['sh', '-c', 'while true; do echo "logging" >> /opt/logs.txt; sleep 1; done']
+          volumeMounts:
+            - name: data
+              mountPath: /opt
+      initContainers:
+        - name: logshipper
+          image: alpine:latest
+          restartPolicy: Always
+          command: ['sh', '-c', 'tail -F /opt/logs.txt']
+          volumeMounts:
+            - name: data
+              mountPath: /opt
+      volumes:
+        - name: data
+          emptyDir: {}
+```
+
+
+### Init Container
+
+* run before the app containers are started.
+
+* always run to completion
+
+* Pod cannot be Ready until all init containers have succeeded
+
+* Shares the same network and storage as the main app.
+
+* Do not support lifecycle, livenessProbe, readinessProbe, or startupProbe.
+
+
+```yaml
+spec:
+  containers:
+  - name: myapp-container
+    image: busybox:1.28
+    command: ['sh', '-c', 'echo The app is running! && sleep 3600']
+  initContainers:
+  - name: init-myservice
+    image: busybox:1.28
+    command: ['sh', '-c', "until nslookup myservice.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+  - name: init-mydb
+    image: busybox:1.28
+    command: ['sh', '-c', "until nslookup mydb.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mydb; sleep 2; done"]
+```
