@@ -567,7 +567,7 @@ readinessProbe:
 
 * configure the probes doc
 
-> [doc1](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes)
+> [doc](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes)
 
 
 
@@ -677,3 +677,104 @@ spec:
     image: busybox:1.28
     command: ['sh', '-c', "until nslookup mydb.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mydb; sleep 2; done"]
 ```
+
+### Scheduling Pods
+
+
+
+1. using `nodeSelector`and `nodeName`
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    env: test
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: IfNotPresent
+  nodeSelector:       #best practice
+    disktype: ssd
+
+  #nodeName: foo-node
+
+```
+
+>  * add label to node   
+
+  `kubectl label nodes <your-node-name> disktype=ssd`
+
+  `kubectl get nodes --show-labels`
+
+2. using Affinity and anti-affinity
+
+* Node affinity functions like the nodeSelector field but is more expressive and allows you to specify `soft rules`
+
+  * two types of node affinity:
+
+    * `requiredDuringSchedulingIgnoredDuringExecution` : Pod won't be scheduled unless the rule is met
+
+    * `preferredDuringSchedulingIgnoredDuringExecution` : scheduler tries to meet the rule but will schedule the Pod elsewhere if no matching Node is found. Preferred rules can be given a `weight (1-100)`
+
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: with-node-affinity
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:           # required during scheduling pod must pass the conditions
+                                                                #  ignore during execution pod still run if label change 
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - antarctica-east1
+            - antarctica-west1
+      preferredDuringSchedulingIgnoredDuringExecution:        # preferred during scheduling the pod wil be scheduled if rules not satisfied
+                                                                #  ignore during execution pod still run if label change  
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: another-node-label-key
+            operator: In
+            values:
+            - another-node-label-value
+  containers:
+  - name: with-node-affinity
+    image: registry.k8s.io/pause:3.8
+```
+
+* Node anti-Affinity
+
+  * pods run on a Node that DOES NOT HAVE this label
+
+  * only change the operatore with add `NotIN` or `DoesNotExist` also `Gt` and `Lt` 
+```yaml
+affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: NotIn
+            values:
+            - antarctica-east1
+```
+
+> Operatores
+
+| Operator | Behavior |
+|---|---|
+| In | The label value is present in the supplied set of strings |
+|NotIn|The label value is not contained in the supplied set of strings|
+|Exists|A label with this key exists on the object|
+|DoesNotExist|No label with this key exists on the object|
+|Gt|The field value will be parsed as an integer, and that integer is less than the integer that results from parsing the value of a label named by this selector|
+|Lt|The field value will be parsed as an integer, and that integer is greater than the integer that results from parsing the value of a label named by this selector|
