@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netflix-deployment
+  namespace: netflix-clone
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: netflix-clone
+  template:
+    metadata:
+      labels:
+        app: netflix-clone
+    spec:
+      containers:
+        - name: netflix-clone
+          image: mhmdocker1/netflix-clone:v1.1
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: netflix-clone-config
+            - secretRef:
+                name: netflix-mongodb-secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+      

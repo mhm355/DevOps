@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: netflix-mongodb-service
+  namespace: netflix-clone
+spec:
+  selector:
+    app: mongodb
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017
+  clusterIP: None  
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netflix-mongodb-config
+  namespace: netflix-clone
+data:
+  MONGO_INITDB_ROOT_USERNAME: "netflix-clone-admin"
+  MONGO_INITDB_DATABASE: "netflix-clone-db"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: netflix-mongodb-secret
+  namespace: netflix-clone
+type: Opaque
+stringData:
+  MONGO_INITDB_ROOT_PASSWORD: "netflix-clone"
+  
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: netflix-mongodb
+  namespace: netflix-clone
+spec:
+  serviceName: "netflix-mongodb-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:8.0
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+          envFrom:
+            - configMapRef:
+                name: netflix-mongodb-config
+            - secretRef:
+                name: netflix-mongodb-secret
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: "standard"
+        resources:
+          requests:
+            storage: 5Gi
