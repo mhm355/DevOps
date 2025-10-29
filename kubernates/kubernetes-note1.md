@@ -271,7 +271,7 @@ automountServiceAccountToken: false
 * k8s allow pass dynamic configuration values at the application runtime which control its workflow
 
 
-1. __ConfiMap__
+### ConfiMap
 
 * used to assign non-sensitive configuration
 
@@ -361,7 +361,7 @@ spec:
         
 ```
 
-2. __Secrets__
+### Secret
 
 * used to configure the sensitive data
 
@@ -374,8 +374,6 @@ spec:
   * Opaque  : default Secret type
 
     we must use `kubectl create secret generic <...>`
-
-
 
 
 
@@ -410,6 +408,359 @@ spec:
           readOnly: true
           mountPath: "/etc/secret-volume"
 ```
+## Storage
+
+### Volume
+
+  * provide a way for containers in a pod to access and share data via the filesystem
+
+  * important for data persistence and shared storage
+
+* types
+
+1. ConfigMap
+
+  * inject configuration data into pods
+
+  * data stored in a ConfigMap can be referenced using this volume type
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-pod
+spec:
+  containers:
+    - name: test
+      image: busybox:1.28
+      command: ['sh', '-c', 'echo "The app is running!" && tail -f /dev/null']
+      volumeMounts:
+        - name: config-vol   # name of the volume
+          mountPath: /etc/config  # path in the container
+  volumes:
+    - name: config-vol   # name of the volume
+      configMap:          # type of the volume  always mounted as readOnly
+        name: log-config   # name of the configMap
+        items:              # may share some items from the configMap 
+          - key: log_level
+            path: log_level.conf
+```
+
+2. emptyDir
+
+  * created when the Pod is assigned to a node
+
+  * all containers in the Pod can read and write the same files in the emptyDir volume
+
+  * can be mounted at the same or different paths in each container
+
+  * if pod removed the volume removed but when container removed has no affect on the volume
+
+  * by default are stored on whatever medium that backs the node such as disk, SSD, or network storage, depending on your environment
+  * used for Sharing Data Between Containers, Temporary File Storage, High-Speed In-Memory Storage when assign `medium: "Memory"`
+
+```yaml
+
+spec:
+  containers:
+  - image: registry.k8s.io/test-webserver
+    name: test-container
+    volumeMounts:
+    - mountPath: /cache
+      name: cache-volume
+  volumes:
+  - name: cache-volume
+    emptyDir:
+      sizeLimit: 500Mi
+      medium: Memory   # memory storage
+
+```
+
+3. hostPath
+
+  * mounts a file or directory from the host node's filesystem into the Pod
+
+  * presents many security risks. insted it use `local persistence volume`
+
+  * uses 
+
+    * running a container that needs access to node-level system components such as reading logs 
+
+    * making a configuration file stored on the host system available read-only to a static pod as it can not access configMap
+
+
+```yaml
+ volumeMounts:
+    - mountPath: /foo
+      name: example-volume
+      readOnly: true        # restict the access that is for more security
+  volumes:
+  - name: example-volume
+    # mount /data/foo, but only if that directory already exists
+    hostPath:
+      path: /data/foo # directory location on host
+      type: Directory # this field is optional default is "" means no checks will be performed before mounting the hostPath volume
+```
+
+  * hostPath type
+
+    1. `""` it is the default value which means no checks will be performed befor mounting the hostPath volume
+
+    2. `DirectoryOrCreate` if the path not exist then it will be created with permissions `0755`
+
+    3. `Directory` directory must exist at the given path
+
+    4. `FileOrCreate` If nothing exists at the path, an empty file is created with permissions 0644`, If the parent directory of the mounted file does not exist, the pod fails to start
+
+    5. `File` A file must already exist at the given path.
+
+    6. `Socket` A UNIX socket must already exist at the given path.
+
+    7. `CharDevice` A character device must exist at the path (Linux nodes only).
+
+    8. `BlockDevice`  A block device must exist at the path (Linux nodes only).
+
+
+4. other types
+
+  * `gitRepo` mounts a git repo as a volume
+
+  * `image` mounts an OCI object (a container image or artifact) that is available on the kubelet's host machine
+
+  * `nfs` mounts an existing NFS (Network File System) share. Data is preserved, and it can be mounted by multiple writers simultaneously.
+
+  * `local` used when creating `PresistenceVolume`, It requires nodeAffinity to be set on the PersistentVolume so the scheduler can place the Pod on the correct node. 
+
+  * `persistentVolumeClaim`  Used to mount a `PersistentVolume` into a Pod, allowing users to claim durable storage without knowing the details of the particular cloud environment.
+
+  * `secret` used to pass sensitive information, such as passwords, to Pods. mounted as `readOnly`
+
+```yaml
+
+volumes:
+  - name: git-volume
+    gitRepo:
+      repository: "git@somewhere:me/my-git-repository.git"
+      revision: "22f1d8406d464b0c0874075539c1f2e96c253775"
+---
+
+volumes:
+  - name: volume
+    image:
+      reference: quay.io/crio/artifact:v2  # Artifact reference
+      pullPolicy: IfNotPresent
+---
+volumes:
+  - name: test-volume
+    nfs:
+      server: my-nfs-server.example.com
+      path: /my-nfs-volume
+      readOnly: true
+```
+
+### PersistenceVolume (PV)
+
+  * provides details of how storage is provided from how it is consume
+
+  * piece of storage in the cluster that has been `provisioned` by an `administrator` or `dynamically` provisioned using `Storage Classes`
+
+
+#### PV provisioning
+
+1. Static
+
+  * cluster administrator creates a number of PVs
+
+  * PVs are available in the API for users to claim.
+
+2. Dynamic
+
+  * using `StorageClass`
+
+#### PV Binding
+
+  * control loop in the control plane watches for new PVCs, finds a matching PV, and binds them together. if `PV` dynamicaly provisioned, loop always bind that PV to the PVC
+
+#### Storage Object in use Protection
+
+  * prevents data loss by stopping the deletion of PVCs or PVs that are actively in use.
+
+  * protection is managed using `finalizers` (e.g., kubernetes.io/pvc-protection). ensures that PVs with a `Delete` policy are only removed after the backing storage has been successfully deleted.
+
+  
+#### Reclaiming
+
+  * define the affect of PV after deleting the PVC
+
+  1. `Retain` 
+
+  * PV and its data remains after deleting PVC
+
+  * Volume is `released` and require manual cleanup
+
+
+  2. `Delete`
+
+  * default for dynamic provisioning
+
+  * deletes both the PV object and the associated storage asset in the external infrastructure.
+
+  3. `Recycle (deprecated)`
+
+  * performs a basic scrub (rm -rf /thevolume/*) on the volume. and makes it available again for a new claim.
+
+#### PV Types
+
+[Types of Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#types-of-persistent-volumes)
+
+#### Access Modes
+
+1. `ReadWriteOnce` volume can be mounted as read-write by a single node, allow multiple pods in the same node to access the volume at the same time
+
+2. `ReadOnlyMany` volume can be mounted as read-only by many nodes.
+
+3. `ReadWriteMany` volume can be mounted as read-write by many nodes.
+
+4. `ReadWriteOncePod`  volume can be mounted as read-write by a single Pod
+
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: my-pv-volume
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem  # by default is Filesystem, mounted into Pods into a directory 
+                         # another mode is  `Block` volume is presented into a Pod as a block device without any filesystem on it
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  # The actual storage details vary based on the storage type (e.g., nfs, awsEbs, azureDisk)
+  nfs:
+    path: /mnt/nfs/data
+    server: 192.168.1.100
+```
+
+
+#### PV Phase
+
+1. `Available` : The volume is free and not currently bound to any claim.
+
+2. `Bound` : The volume is actively bound to a PersistentVolumeClaim (PVC).
+
+3. `Released` : The associated PVC has been deleted, but the cluster has not yet reclaimed the storage resource.
+
+4. `Failed` : The volume's automated reclamation process has failed.
+
+
+### PersistentVolumeClaim (PVC) 
+
+  * it is a request for storage by a user.
+
+  * Pods consume node resources and PVCs consume PV resources
+
+  * `Pods` can request specific levels of resources (CPU and Memory). `Claims` can request specific `size` and `access modes`
+
+  * Pods access storage by mounting the PVC as a volume. The Pod and the PVC must exist in the same namespace.
+
+  * only expand a `PVC` if its `storage class`'s `allowVolumeExpansion` field is set to `true`.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 8Gi
+  storageClassName: slow    # Bound with pv if has the same storage class name, PVCs don't necessarily have to request a class, set it ""  bound only to PVs of that default storageClass
+  selector:       # volumes whose labels match the selector can be bound to the claim
+    matchLabels:
+      release: "stable"
+    matchExpressions:
+      - {key: environment, operator: In, values: [dev]}
+
+---
+
+# PVC from volume snapshot
+spec:
+  storageClassName: csi-hostpath-sc
+  dataSource:
+    name: new-snapshot-test
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Clone a PVC
+
+spec:
+  storageClassName: my-csi-plugin
+  dataSource:
+    name: existing-src-pvc-name
+    kind: PersistentVolumeClaim
+```
+
+### Storage Class
+
+* define the type of the storage service
+
+* primary mechanism for `dynamic provisioning`, which automatically creates a PersistentVolume (PV) when a PersistentVolumeClaim (PVC) requests a specific class
+
+* `provisioner` that determines what `volume plugin` is used for provisioning PVs
+
+* `parameters` describe the storage (e.g., disk type, filesystem, or encryption settings)
+
+
+
+
+
+
+
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: low-latency
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: csi-driver.example-vendor.example
+reclaimPolicy: Retain # default value is Delete
+allowVolumeExpansion: true
+mountOptions:
+  - discard # this might enable UNMAP / TRIM at the block storage layer
+volumeBindingMode: WaitForFirstConsumer             # `Immediate` mode indicates that volume binding and dynamic provisioning occurs once the PersistentVolumeClaim is created
+parameters:                                   # describe the storage (e.g., disk type, filesystem, or encryption settings)
+  guaranteedReadWriteLatency: "true" # provider-specific
+
+allowedTopologies:      # Used with `WaitForFirstConsumer` to restrict the provisioning of volumes to specific topologies (e.g., only in us-central-1a or us-central-1b).
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/zone
+    values:
+    - us-central-1a
+    - us-central-1b
+```
+
+#### Provisioner
+
+* `Internal Provisioners`: Legacy in-tree provisioners (e.g., kubernetes.io/vsphere-volume). Many of these, including those for AWS EBS and Azure Disk, are deprecated.
+
+* `External Provisioners`: The recommended approach. These are independent programs that follow the `Container Storage Interface (CSI)` specification (e.g., ebs.csi.aws.com, efs.csi.aws.com).
+
+* `Local Storage`: A special case that uses `kubernetes.io/no-provisioner`. It doesn't dynamically provision new storage but uses `WaitForFirstConsumer` to delay binding until a Pod is scheduled, allowing the Pod to be matched with a pre-existing local PV on a specific node.
+
 
 
 ## Pods

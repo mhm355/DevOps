@@ -307,7 +307,7 @@ spec:
 
 * provide load balancing, SSL termination and name-based virtual hosting.
 
-* must have an `[Ingress controller](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/)` to satisfy an Ingress
+* must have an [Ingress controller](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/) to satisfy an Ingress
 
 *  uses `annotations` to configure some options depending on the Ingress controller
 
@@ -316,11 +316,11 @@ spec:
 
 	contains
 
-	* `optional host`  (if no host applied the rules will be applied to all inbound traffic)
+  * `optional host`  (if no host applied the rules will be applied to all inbound traffic)
 	
-	* `paths`  such as (/testpath) , host and path must match the incoming request befor loadbalancer direct the traffic
+  * `paths`  such as (/testpath) , host and path must match the incoming request befor loadbalancer direct the traffic
 	
-	* `backend` : contains the `service`
+  * `backend` : contains the `service`
 	
 > A `defaultBackend` is often configured in an Ingress controller to service any requests that do not match a path in the spec, If no `.spec.rules` are specified, `.spec.defaultBackend` must be specified
 	
