@@ -1048,6 +1048,8 @@ spec:
         - /tmp/healthy
       initialDelaySeconds: 5   # tells kubelet that it should wait 5 seconds before performing the first probe
       periodSeconds: 5         # kubelet should perform a liveness probe every 5 seconds
+      timeoutSeconds: 1         # probe must return a successful (200-399) response within 1 second, or it's considered a failure.
+      failureThreshold: 3     # probe must fail 3 times in a row before Kubernetes takes action
 
 ---
 
