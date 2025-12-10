@@ -141,3 +141,29 @@ cat /proc/sys/vm/vfs_cache_pressure   # show the value assigned
 
 sudo nano /etc/sysctl.conf  # add this line vm.vfs_cache_pressure=50
 ```
+
+
+# 5. The "Observer Effect" (noatime)
+
+* The Problem: You are asking the computer to read, but it is forced to write. On a slow mechanical HDD, this causes the read/write needle to jump around unnecessarily. It wears out the drive and adds a tiny delay to everything.
+
+* The Solution: noatime We want to tell the system: "I don't care when a file was last read. Just let me read it without writing anything."
+
+* default is `relatime`
+
+```bash
+
+findmnt /  # check tha status
+
+sudo cp /etc/fstab /etc/fstab.backup
+
+sudo nano /etc/fstab   # chnage it to defaults,noatime and can assign it to /home
+
+sudo mount -a # check if no output the syntax is correct
+
+sudo systemctl restart
+```
+
+
+# 6. Fixing "System Freezes" (Dirty Bytes)
+
