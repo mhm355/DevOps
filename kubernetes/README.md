@@ -7,128 +7,237 @@
 
 * known as K8S ( 8 is meaning 8 letters bettwen k and s)
 
+---
+
+## Table of Contents
+
+1. [Cluster Architecture](#k8s-cluster-components)
+   - [Control/Master Node](#control-master-node)
+   - [Worker Node](#worker-node)
+   - [Addons](#addons)
+2. [High Availability (HA)](#high-availability-ha)
+3. [Tools](#tools)
+4. [Cluster Management](#manage-cluster)
+5. [Namespaces](#namespaces)
+6. [RBAC (Role Based Access Control)](#role-based-access-control-rbac)
+7. [Application Configuration](#application-configuration)
+   - [ConfigMap](#configmap)
+   - [Secret](#secret)
+8. [Storage](#storage)
+   - [Volumes](#volume)
+   - [PersistentVolume](#persistencevolume-pv)
+   - [PersistentVolumeClaim](#persistentvolumeclaim-pvc)
+   - [StorageClass](#storage-class)
+9. [Pods](#pods)
+   - [Container Resources](#containers-resources-cpu--memory)
+   - [Health Checks](#container-healthcheck)
+   - [Restart Policies](#restart-policies)
+   - [Sidecar Containers](#sidecar-container)
+   - [Init Containers](#init-container)
+   - [Scheduling](#scheduling-pods)
+10. [DaemonSets](#daemonsets)
+11. [Static Pods](#static-pod)
+12. [App Scaling](#app-scaling)
+13. [Stateless and Stateful Apps](#stateless-ans-statful)
+14. [ReplicationController & ReplicaSet](#replicationcontrollller-and-replicaset)
+15. [Deployments](#deployment)
+    - [Deployment Strategies](#deployment-strategy)
+16. [Networking](#k8s-networking)
+    - [CNI](#container-network-interface-cni)
+    - [DNS](#dns)
+    - [Network Policies](#network-policy)
+    - [Services](#service)
+    - [Ingress](#ingress)
+    - [IngressClass](#ingress-class)
+17. [Jobs & CronJobs](#jobs--cronjobs)
+18. [Taints & Tolerations](#taints--tolerations)
+19. [Resource Quotas & LimitRanges](#resource-quotas--limitranges)
+20. [Horizontal Pod Autoscaler (HPA)](#horizontal-pod-autoscaler-hpa)
+21. [Helm](#helm)
+22. [kubectl Cheat Sheet](#kubectl-cheat-sheet)
+23. [Troubleshooting](#troubleshooting)
+
+---
+
 ## K8S Cluster Components
 
 ![Cluster](./screenshots/kubernetes-cluster-architecture.svg)
 
-1. Control/Master Node
+### 1. Control/Master Node
 
-* kube-apiserver
+> **💡 Production Note:** For production, always run **at least 3 control plane nodes** for high availability. Single control plane = single point of failure.
 
-    * the front end for the Kubernetes control plane.
+#### kube-apiserver
 
-    * designed to scale horizontally
+* the front end for the Kubernetes control plane.
 
-    * it exposes the Kubernetes API, allowing users, external tools, and other cluster components to communicate with the cluster, and manage its resources
+* designed to scale horizontally
 
-    * handles authentication of API requests and performs authorization checks to ensure that users and service accounts have the necessary permissions to perform requested actions.
+* it exposes the Kubernetes API, allowing users, external tools, and other cluster components to communicate with the cluster, and manage its resources
 
-    * validates and configures data for API objects
+* handles authentication of API requests and performs authorization checks to ensure that users and service accounts have the necessary permissions to perform requested actions.
 
+* validates and configures data for API objects
 
-* etcd 
-
-    * key value database stores cluster information (configuration, state, metadata)
-
-* kube-controller-manager
-
-    * monitors the cluster’s state through the Kubernetes API server
-
-    * types
-
-        * Replication Controller : Ensures the desired number of Pod replicas are running
-
-        * Namespace Controller: Creates and manages Kubernetes namespaces
-
-        * Endpoints Controller: Maintains an Endpoints object for each Service
-
-        * Service Account Controller: Creates and manages Service Accounts used for Pod authentication and authorization.
-
-        * Node Controller: Tracks the health and availability of Nodes in the cluster.
-
-        * Token Controller: Responsible for issuing authentication tokens for service accounts.
-
-        * Lease Controller: Enforces leasing mechanisms for certain resources to prevent conflicts and maintain coordination.
-
-* kube-scheduler
-
-    * assign pods to suitable nodes based on various factors
-
-* cloud-controller-manager
-
-    *  link the cluster into cloud provider's API
-
-    * types
-
-        * Node Controller: responsible for checking if a particular node is present in the cloud or not and updating the node labels with appropriate labels and annotations
-
-        * Route Controller: responsible for configuring routes in the cloud environment 
-
-        * Service Controller: esponsible for creating a load balancer in the cloud environment.
+> **📌 Key Details:**
+> - Default port: `6443` (HTTPS)
+> - All components communicate through the API server (never directly with each other)
+> - Stateless - can run multiple instances behind a load balancer
 
 
-2. Worker Node
+#### etcd 
 
-* kubelet
+* key value database stores cluster information (configuration, state, metadata)
 
-    * agent that runs on each node in the cluster
+> **⚠️ Critical Production Notes:**
+> - **Always backup etcd regularly** - losing etcd = losing the entire cluster state
+> - Run **odd number of nodes** (3, 5, 7) for quorum
+> - Default port: `2379` (client), `2380` (peer)
+> - Recommended: Use SSDs for etcd storage (latency-sensitive)
+> - Backup command: `etcdctl snapshot save /backup/etcd-snapshot.db`
 
-    * makes sure that containers are running in a Pod.
+#### kube-controller-manager
 
-    * doesn't manage containers which were not created by Kubernetes
+* monitors the cluster's state through the Kubernetes API server
 
-    * acts as the bridge between the Kubernetes control plane and the node, and interacting with the container runtime to execute and manage containers
+* runs controller loops that watch the cluster state and make changes to move current state → desired state
 
-    * monitors the health of pods and their containers using `liveness and readiness probes`.
+* types
 
-    * Manages resources on the node and can perform evictions if thresholds are met (terminate)
+    * Replication Controller : Ensures the desired number of Pod replicas are running
 
-    * it sends gRPC requests through the CRI to the container runtime
+    * Namespace Controller: Creates and manages Kubernetes namespaces
 
-* kube-proxy
+    * Endpoints Controller: Maintains an Endpoints object for each Service
 
-    * network proxy that runs on each node in your cluster
+    * Service Account Controller: Creates and manages Service Accounts used for Pod authentication and authorization.
 
-    * maintains network rules on nodes
+    * Node Controller: Tracks the health and availability of Nodes in the cluster.
 
-    * no need to kube-proxy, if network plugins used which forwared packets to services
+    * Token Controller: Responsible for issuing authentication tokens for service accounts.
 
+    * Lease Controller: Enforces leasing mechanisms for certain resources to prevent conflicts and maintain coordination.
 
-* container runtime
+> **📌 Key Details:**
+> - Default port: `10257`
+> - Only ONE active controller-manager at a time (leader election)
+> - `--node-monitor-grace-period` controls how long before marking node unhealthy (default: 40s)
 
-    * responsible for running containers
+#### kube-scheduler
 
-    * it links to a third party project or product that is not part of Kubernetes itself
+* assigns pods to suitable nodes based on various factors
 
-    * installed on each node in the cluster
+> **📌 Scheduling Factors:**
+> - Resource requests/limits (CPU, memory)
+> - Node affinity/anti-affinity rules
+> - Taints and tolerations
+> - Pod topology spread constraints
+> - Inter-pod affinity
+> - Custom scheduler priorities
+> 
+> Default port: `10259`
 
-    * k8s interacts with container runtimes through the `CRI` (container runtime interface : standard API. It acts as a "plugin" interface)
+#### cloud-controller-manager
 
-    * types
+*  link the cluster into cloud provider's API
 
-        * low-level : `runc`
-        
-        * high-level
+* types
 
-            * containerd
+    * Node Controller: responsible for checking if a particular node is present in the cloud or not and updating the node labels with appropriate labels and annotations
 
-            * OCR-I
+    * Route Controller: responsible for configuring routes in the cloud environment 
 
+    * Service Controller: responsible for creating a load balancer in the cloud environment.
 
-> Low-Level Runtime (runc): This is the engine. It just does one job: it takes instructions and runs the car. It doesn't know about steering, gas, or where you're going.
+> **💡 Note:** Only present in cloud-managed clusters (EKS, GKE, AKS) or when using cloud-provider integration.
 
-> High-Level Runtime (containerd, CRI-O): This is the car's internal system (the driver's controls, electronics, and gas tank). It manages the engine (runc), pulls the fuel (images), and handles the steering and brakes (lifecycle, networking, and storage).
+---
 
-> Container Engine (Docker, Podman): This is the complete car experience. It includes the user-friendly CLI (the steering wheel and dashboard), the high-level runtime, and the low-level runtime, all bundled together into one product.
+### 2. Worker Node
 
+> **💡 Production Recommendations:**
+> - Minimum 2 worker nodes for redundancy
+> - Size nodes appropriately (don't run too many small nodes - overhead increases)
+> - Consider dedicated node pools for different workload types
 
-3. addons : use Kubernetes resources (DaemonSet, Deployment, etc) to implement cluster features
+#### kubelet
 
-    * DNS
+* agent that runs on each node in the cluster
 
-    * Web UI (Dashboard)
+* makes sure that containers are running in a Pod.
 
-    * Network plugins
+* doesn't manage containers which were not created by Kubernetes
+
+* acts as the bridge between the Kubernetes control plane and the node, and interacting with the container runtime to execute and manage containers
+
+* monitors the health of pods and their containers using `liveness and readiness probes`.
+
+* Manages resources on the node and can perform evictions if thresholds are met (terminate)
+
+* it sends gRPC requests through the CRI to the container runtime
+
+> **📌 Key Details:**
+> - Default port: `10250`
+> - Config file: `/var/lib/kubelet/config.yaml`
+> - Logs: `journalctl -u kubelet`
+> - Key flags: `--max-pods` (default 110), `--eviction-hard`
+
+#### kube-proxy
+
+* network proxy that runs on each node in your cluster
+
+* maintains network rules on nodes (iptables/IPVS)
+
+* no need for kube-proxy if network plugins which forward packets to services are used
+
+> **📌 Proxy Modes:**
+> - `iptables` (default) - good for <1000 services
+> - `ipvs` - better performance for large clusters (1000+ services)
+> - `kernelspace` - Windows nodes
+>
+> Default port: `10256`
+
+#### container runtime
+
+* responsible for running containers
+
+* it links to a third party project or product that is not part of Kubernetes itself
+
+* installed on each node in the cluster
+
+* k8s interacts with container runtimes through the `CRI` (container runtime interface : standard API. It acts as a "plugin" interface)
+
+* types
+
+    * low-level : `runc`
+    
+    * high-level
+
+        * containerd (most common, Docker default)
+
+        * CRI-O (RedHat/OpenShift default)
+
+> **Runtime Analogy:**
+> - **Low-Level Runtime (runc)**: This is the engine. It just does one job: it takes instructions and runs the container.
+> - **High-Level Runtime (containerd, CRI-O)**: This is the car's internal system. It manages the engine (runc), pulls images, and handles lifecycle, networking, and storage.
+> - **Container Engine (Docker, Podman)**: This is the complete car experience with user-friendly CLI.
+
+> **💡 Production Note:** Docker was deprecated as a runtime in K8s 1.24+. Use `containerd` or `CRI-O` directly.
+
+---
+
+### 3. Addons
+
+Use Kubernetes resources (DaemonSet, Deployment, etc) to implement cluster features:
+
+| Addon | Purpose | Examples |
+|-------|---------|----------|
+| **DNS** | Service discovery within cluster | CoreDNS (required) |
+| **Dashboard** | Web UI for cluster management | Kubernetes Dashboard |
+| **Network Plugin** | Pod networking (CNI) | Calico, Cilium, Flannel, Weave |
+| **Metrics** | Resource metrics collection | Metrics Server (required for HPA) |
+| **Logging** | Centralized log collection | Fluentd, Fluent Bit |
+| **Ingress Controller** | External HTTP(S) routing | NGINX, Traefik, HAProxy |
 
 
 
@@ -136,6 +245,20 @@
 
 * refers to the design and implementation of a cluster to ensure continuous operation and minimize downtime even in the event of component failures.
 
+> **💡 HA Requirements:**
+> - Minimum 3 control plane nodes (odd number for quorum)
+> - Load balancer in front of API servers
+> - Replicated etcd cluster
+> - Multiple worker nodes across availability zones
+
+### Topology Comparison
+
+| Aspect | Stacked etcd | External etcd |
+|--------|--------------|---------------|
+| **Nodes Required** | 3 control plane | 3 control plane + 3 etcd |
+| **Complexity** | Lower | Higher |
+| **Failure Impact** | Losing node = losing etcd member | Separated failure domains |
+| **Best For** | Small/Medium clusters | Large production clusters |
 
 ### 1. Stacked etcd topology
 
@@ -147,7 +270,7 @@
 
 * Each `control plane node` creates a `local etcd member` and this `etcd member` communicates `only` with the `kube-apiserver`
 
-    > _If one node goes down, both an etcd member and a control plane instance are lost, and redundancy is compromised_ we can mitigate this risk by adding more control plane nodes.
+> ⚠️ _If one node goes down, both an etcd member and a control plane instance are lost, and redundancy is compromised._ Mitigate by adding more control plane nodes.
 
 
 ### 2. External etcd topology
@@ -164,77 +287,138 @@
 
 * requires `twice the number of hosts` as the `stacked HA topology`
 
+> **💡 Load Balancer Options:**
+> - Cloud LB (AWS ALB/NLB, GCP LB, Azure LB)
+> - HAProxy
+> - NGINX
+> - kube-vip (for bare metal)
 
+---
 
 ## Tools
 
-1. kubectl : the offical cli tool 
+| Tool | Purpose | Use Case |
+|------|---------|----------|
+| **kubectl** | Official CLI for K8s | Daily operations, debugging, resource management |
+| **minikube** | Local single-node cluster | Local development, learning |
+| **kind** | K8s in Docker | CI/CD testing, local multi-node |
+| **kubeadm** | Cluster bootstrapping | Production cluster setup |
+| **Helm** | Package manager | Deploy complex apps, templating |
+| **kustomize** | Configuration management | Environment-specific overlays |
+| **kompose** | Docker Compose → K8s | Migration from Docker Compose |
+| **k9s** | Terminal UI | Real-time cluster monitoring |
+| **Lens** | Desktop GUI | Visual cluster management |
+| **kubectx/kubens** | Context/namespace switching | Multi-cluster management |
 
-2. minikube : used to create the k8s cluster in single node
+> **💡 Must-Have Tools for DevOps:**
+> - `kubectl` + shell completion
+> - `k9s` for interactive debugging
+> - `kubectx` + `kubens` for multi-cluster work
+> - `stern` for multi-pod log tailing
 
-3. kubadm : used to create the cluster , for production level
-
-4. Helm : used to create k8s template, package mangement and convert k8s objects into usable templates
-
-5. kompose : help to transfer docker-compose files into k8s objects 
-
-6. kustomize : configuration management for k8s objects
-
-
-
+---
 
 ## Manage Cluster
 
-1. Drain Nodes
+> **⚠️ Maintenance Best Practices:**
+> - Always drain before maintenance
+> - Perform rolling upgrades (one node at a time)
+> - Have PodDisruptionBudgets (PDBs) for critical workloads
+> - Schedule maintenance during low-traffic periods
+> - Test upgrades in staging first
 
-* Evicts all pods 'non-daemonset pods' from a node  and then marks the node as "unschedulable" This prevents new pods from being scheduled onto that node
+### 1. Drain Nodes
 
-* used to perform maintenance that requires the node to be completely free of workloads, such as OS upgrades, hardware replacement, or kernel patching.
+* Evicts all pods (non-daemonset pods) from a node and then marks the node as "unschedulable"
 
-* `kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --force  --grace-period=0`
+* used for: OS upgrades, hardware replacement, kernel patching
 
-    `--ignore-daemonsets` : DaemonSet-managed pods are not evicted.
-    `--delete-emptydir-data` : Deletes pods with emptyDir volumes (temporary storage).
-    `--force` and `--grace-period=0` to forcibly evict pods.
+```bash
+# Safe drain with defaults
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 
-2. Cordon Nodes
+# Force drain (use with caution!)
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --force --grace-period=0
+```
 
-* Marks a node as "unschedulable" This prevents new pods from being scheduled onto that node.
+| Flag | Purpose |
+|------|---------|
+| `--ignore-daemonsets` | DaemonSet pods are not evicted |
+| `--delete-emptydir-data` | Delete pods using emptyDir volumes |
+| `--force` | Force eviction even without controller |
+| `--grace-period=0` | Immediate termination |
+| `--pod-selector` | Only drain pods matching selector |
 
-* Existing pods remain unaffected.
+### 2. Cordon Nodes
 
-* used to prevent new workloads from landing on a node that might be undergoing preparation for maintenance
+* Marks a node as "unschedulable" - prevents new pods from being scheduled
 
-* `kubectl cordon <node-name>`
+* Existing pods remain running
 
+```bash
+kubectl cordon <node-name>
+```
 
-3. Uncordon Node
+### 3. Uncordon Node
 
-* Allow schedualing to the node again, node will accept new pods.
+* Allow scheduling to the node again
 
-* `kubectl uncordon <node-name>`
-
+```bash
+kubectl uncordon <node-name>
+```
 
 ![drain-vs-cordon-node](./screenshots/drain-vs-cordon-node.png)
 
+### 4. Upgrade Cluster
 
-4. [Upgrade Cluster Instructions](./Instructions/k8s_cluster_upgrade.txt)
+[Full Upgrade Instructions](./Instructions/k8s_cluster_upgrade.txt)
 
-* Control Node :
-    1. drain worker node
-    2. upgrade kubeadm 
-    3. Verify the upgrade plan
-    4. Apply the Upgrade
-    5. upgrade kubelet config
-    6. restart kubelet
-    7. uncordon the node
+> **⚠️ Critical Upgrade Rules:**
+> - Always upgrade one minor version at a time (1.28 → 1.29, not 1.28 → 1.30)
+> - Control plane first, then workers
+> - Backup etcd before upgrading
 
-* Worker Node :
-    1. drain worker node
-    2. upgrade kubeadm 
-    3. upgrade kubelet config
-    4. restart kubelet
-    5. uncordon the node
+**Control Plane Upgrade:**
+```bash
+# 1. Drain the control plane node
+kubectl drain <cp-node> --ignore-daemonsets
+
+# 2. Upgrade kubeadm
+apt-get update && apt-get install -y kubeadm=1.29.x-*
+
+# 3. Verify upgrade plan
+kubeadm upgrade plan
+
+# 4. Apply upgrade (first control plane only)
+kubeadm upgrade apply v1.29.x
+
+# 5. Upgrade kubelet and kubectl
+apt-get install -y kubelet=1.29.x-* kubectl=1.29.x-*
+
+# 6. Restart kubelet
+systemctl daemon-reload && systemctl restart kubelet
+
+# 7. Uncordon
+kubectl uncordon <cp-node>
+```
+
+**Worker Node Upgrade:**
+```bash
+# 1. Drain worker
+kubectl drain <worker-node> --ignore-daemonsets --delete-emptydir-data
+
+# 2. Upgrade kubeadm, kubelet (on the worker node)
+apt-get update && apt-get install -y kubeadm=1.29.x-* kubelet=1.29.x-*
+
+# 3. Upgrade node config
+kubeadm upgrade node
+
+# 4. Restart kubelet
+systemctl daemon-reload && systemctl restart kubelet
+
+# 5. Uncordon
+kubectl uncordon <worker-node>
+```
 
 
 
@@ -250,40 +434,70 @@
 
 * each Kubernetes resource can only be in one namespace.
 
-> when use it : Namespaces are intended for use in environments with many users spread across multiple teams, or projects.
+> **💡 When to Use Namespaces:**
+> - Multiple teams/projects sharing a cluster
+> - Environment separation (dev, staging, prod) in same cluster
+> - Resource quota management per team
+> - Access control boundaries
 
+### Namespace-Scoped vs Cluster-Scoped Resources
 
+| Namespace-Scoped | Cluster-Scoped |
+|------------------|----------------|
+| Pods, Deployments, Services | Nodes, PersistentVolumes |
+| ConfigMaps, Secrets | ClusterRoles, ClusterRoleBindings |
+| Roles, RoleBindings | Namespaces, StorageClasses |
+| NetworkPolicies | IngressClasses |
 
-* K8S starts with four initial namespaces.
+```bash
+# View all namespace-scoped resources
+kubectl api-resources --namespaced=true
 
-    * default : can use cluster without creating a new namespace
-    
-    * kube-node-lease : This namespace holds `Lease objects` associated with each node. Node leases allow the `kubelet` to send `heartbeats` so that the `control plane` can detect node failure. 
+# View all cluster-scoped resources
+kubectl api-resources --namespaced=false
+```
 
-        > Leases
+### Default Namespaces
 
-        are the primary mechanism for `kubelets` to signal their health and availability to the Kubernetes `control plane`.
+| Namespace | Purpose |
+|-----------|---------|
+| `default` | Default for resources without a namespace |
+| `kube-system` | System components (API server, scheduler, etc.) - **don't modify** |
+| `kube-public` | Publicly readable, cluster-info ConfigMap |
+| `kube-node-lease` | Node heartbeat leases for health detection |
 
-        provide a lightweight and efficient way for distributed components within Kubernetes.
+> **⚠️ Best Practices:**
+> - Never deploy applications to `default` namespace in production
+> - Use meaningful namespace names (e.g., `app-name-env`)
+> - Apply ResourceQuotas and LimitRanges per namespace
+> - Implement NetworkPolicies for namespace isolation
 
-        reduce the overhead on the API server and etcd.
+### Working with Namespaces
 
-    * kube-public : it is readable by all clients, reserved for cluster usage, sensitive data should not be placed in this namespace. such as `cluster-info ConfigMap`
+```bash
+# Create namespace
+kubectl create namespace dev
+kubectl create ns prod
 
-    * kube-system : for objects created by the Kubernetes system, includes core components like the API server, controller manager, scheduler, and essential addons like `kube-dns, kube-proxy`. it is not for general use.
+# List namespaces
+kubectl get namespaces
 
+# Get resources in namespace
+kubectl get pods -n kube-system
+kubectl get all -n dev
 
-### Working with namespaces.
+# Set default namespace for context
+kubectl config set-context --current --namespace=dev
 
-1. `kubectl create namespace <namespace-name>` : creat new namespace.
+# Verify current namespace
+kubectl config view --minify | grep namespace:
 
-2. `kubectl get namespaces` : show all namespaces in the cluster.
+# Delete namespace (deletes ALL resources in it!)
+kubectl delete namespace dev
+```
 
-3. `kubectl get <resource-type> <resource-name> --namespace <or -n> <namespace-name>` 
+> **⚠️ Warning:** Deleting a namespace deletes ALL resources within it. This cannot be undone.
 
-    that show the resouce in the namespace ex: `kubectl get pods -n default`
-
-4. `kubectl config set-context --current --namespace=<namespace-name>` : set namespace for the current context. When executing subsequent `kubectl` commands without explicitly specifying a namespace. we can verify it using `kubectl config view --minify | grep namespace:`
 
 
 ## Role Based Access Control (RBAC)
@@ -292,9 +506,61 @@
 
 * uses the `rbac.authorization.k8s.io` API group 
 
-*  security mechanism that regulates access to Kubernetes API resources
+* security mechanism that regulates access to Kubernetes API resources
 
-### types of RBAC objects
+> **💡 RBAC Best Practices:**
+> - Follow principle of least privilege
+> - Use Roles (namespaced) over ClusterRoles when possible
+> - Avoid wildcards (`*`) in production
+> - Audit RBAC permissions regularly
+> - Never give `cluster-admin` to applications
+
+### RBAC Verbs
+
+| Verb | Description |
+|------|-------------|
+| `get` | Read a single resource |
+| `list` | Read multiple resources |
+| `watch` | Stream resource changes |
+| `create` | Create new resources |
+| `update` | Modify existing resources |
+| `patch` | Partially modify resources |
+| `delete` | Delete resources |
+| `deletecollection` | Delete multiple resources |
+| `*` | All verbs (avoid in production) |
+
+### Role vs ClusterRole
+
+| Aspect | Role | ClusterRole |
+|--------|------|-------------|
+| **Scope** | Single namespace | Cluster-wide |
+| **Namespaced** | Yes | No |
+| **Use With** | RoleBinding | RoleBinding or ClusterRoleBinding |
+| **Use Case** | App-specific access | Cross-namespace or cluster resources |
+
+### Working with RBAC
+
+```bash
+# Check if you can perform an action
+kubectl auth can-i create pods
+kubectl auth can-i delete deployments -n production
+kubectl auth can-i '*' '*'  # Check if cluster-admin
+
+# Check permissions as another user
+kubectl auth can-i create pods --as=jane
+
+# List roles/clusterroles
+kubectl get roles -A
+kubectl get clusterroles
+
+# Describe role
+kubectl describe role pod-reader -n default
+
+# Check who can perform an action
+kubectl auth who-can create pods -n default
+```
+
+### Types of RBAC Objects
 
 #### Roles
 
@@ -454,16 +720,53 @@ automountServiceAccountToken: false
 
 ## Application Configuration
 
-* k8s allow pass dynamic configuration values at the application runtime which control its workflow
+* K8s allows passing dynamic configuration values at application runtime
 
+### ConfigMap vs Secret
 
-### ConfiMap
+| Aspect | ConfigMap | Secret |
+|--------|-----------|--------|
+| **Purpose** | Non-sensitive config | Sensitive data (passwords, keys) |
+| **Encoding** | Plain text | Base64 encoded |
+| **Size Limit** | 1 MiB | 1 MiB |
+| **Encryption** | No | Optional (at rest) |
+
+> **💡 Best Practices:**
+> - Use Secrets for passwords, tokens, keys, certificates
+> - Consider external secret managers (Vault, AWS Secrets Manager) for production
+> - Set `immutable: true` for configs that shouldn't change
+> - Mount as files when possible (auto-updates without pod restart)
+
+---
+
+### ConfigMap
 
 * used to assign non-sensitive configuration
 
 * key value format
 
 * data stored in a ConfigMap cannot exceed 1 MiB
+
+#### Working with ConfigMaps
+
+```bash
+# Create from literal
+kubectl create configmap my-config --from-literal=key1=value1 --from-literal=key2=value2
+
+# Create from file
+kubectl create configmap my-config --from-file=config.properties
+kubectl create configmap my-config --from-file=my-key=config.properties  # custom key name
+
+# Create from directory (each file becomes a key)
+kubectl create configmap my-config --from-file=./config-dir/
+
+# View configmap
+kubectl get configmap my-config -o yaml
+kubectl describe configmap my-config
+
+# Edit configmap
+kubectl edit configmap my-config
+```
 
 ```yaml
 apiVersion: v1
@@ -549,17 +852,57 @@ spec:
 
 ### Secret
 
-* used to configure the sensitive data
+* used to store sensitive data (passwords, tokens, keys)
 
-* key value format
+* data is Base64 encoded (NOT encrypted by default!)
 
-* command to encrypt a text `echo -n "some-text" | base64 `
+* mounted as files or environment variables
 
-* [types of secrets](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types)
+> **⚠️ Security Notes:**
+> - Base64 is NOT encryption - anyone with API access can decode
+> - Enable encryption at rest in production
+> - Use RBAC to restrict Secret access
+> - Consider external secret management (Vault, AWS Secrets Manager, External Secrets Operator)
 
-  * Opaque  : default Secret type
+#### Secret Types
 
-    we must use `kubectl create secret generic <...>`
+| Type | Usage |
+|------|-------|
+| `Opaque` | User-defined data (default) |
+| `kubernetes.io/tls` | TLS certificates |
+| `kubernetes.io/dockerconfigjson` | Docker registry credentials |
+| `kubernetes.io/basic-auth` | Basic authentication |
+| `kubernetes.io/ssh-auth` | SSH credentials |
+| `kubernetes.io/service-account-token` | ServiceAccount token (auto-created) |
+
+#### Working with Secrets
+
+```bash
+# Create generic secret
+kubectl create secret generic my-secret --from-literal=username=admin --from-literal=password=secret123
+
+# Create from file
+kubectl create secret generic my-secret --from-file=./credentials.txt
+
+# Create TLS secret
+kubectl create secret tls my-tls --cert=tls.crt --key=tls.key
+
+# Create docker registry secret
+kubectl create secret docker-registry regcred \
+  --docker-server=registry.example.com \
+  --docker-username=user \
+  --docker-password=pass \
+  --docker-email=user@example.com
+
+# View secret (base64 encoded)
+kubectl get secret my-secret -o yaml
+
+# Decode secret value
+kubectl get secret my-secret -o jsonpath='{.data.password}' | base64 -d
+
+# Encode value for YAML
+echo -n "my-password" | base64
+```
 
 
 
@@ -596,13 +939,41 @@ spec:
 ```
 ## Storage
 
+> **💡 Storage Workflow:**
+> 1. Admin creates `StorageClass` (defines HOW storage is provisioned)
+> 2. Admin/Dynamic creates `PersistentVolume` (actual storage)
+> 3. User creates `PersistentVolumeClaim` (request for storage)
+> 4. User mounts PVC in Pod via `volumes`
+
+### Storage Comparison
+
+| Type | Scope | Persistence | Use Case |
+|------|-------|-------------|----------|
+| `emptyDir` | Pod | Deleted with pod | Temp files, cache, sidecar sharing |
+| `hostPath` | Node | Persists on node | Node-level data (logs, configs) |
+| `configMap/secret` | Cluster | ConfigMap/Secret lifetime | Configuration injection |
+| `PersistentVolume` | Cluster | Independent of pod | Databases, stateful apps |
+
+### Access Modes
+
+| Mode | Abbreviation | Description |
+|------|--------------|-------------|
+| `ReadWriteOnce` | RWO | Single node read-write |
+| `ReadOnlyMany` | ROX | Multiple nodes read-only |
+| `ReadWriteMany` | RWX | Multiple nodes read-write |
+| `ReadWriteOncePod` | RWOP | Single pod read-write (K8s 1.22+) |
+
+> **⚠️ Important:** Not all storage backends support all access modes. Check your storage class!
+
+---
+
 ### Volume
 
-  * provide a way for containers in a pod to access and share data via the filesystem
+* provides a way for containers in a pod to access and share data via the filesystem
 
-  * important for data persistence and shared storage
+* important for data persistence and shared storage
 
-* types
+#### Volume Types
 
 1. ConfigMap
 
@@ -744,24 +1115,52 @@ volumes:
       readOnly: true
 ```
 
-### PersistenceVolume (PV)
+### PersistentVolume (PV)
 
-  * provides details of how storage is provided from how it is consume
+* piece of storage in the cluster provisioned by an administrator or dynamically via StorageClass
 
-  * piece of storage in the cluster that has been `provisioned` by an `administrator` or `dynamically` provisioned using `Storage Classes`
+* lifecycle independent of any pod that uses the PV
 
+> **💡 PV vs PVC:**
+> - **PV** = Actual storage resource (admin creates)
+> - **PVC** = Request for storage (user creates)
+> - **StorageClass** = Defines HOW to provision storage dynamically
 
-#### PV provisioning
+#### Working with PV/PVC
 
-1. Static
+```bash
+# List PVs and PVCs
+kubectl get pv
+kubectl get pvc -A
 
-  * cluster administrator creates a number of PVs
+# Describe
+kubectl describe pv my-pv
+kubectl describe pvc my-pvc
 
-  * PVs are available in the API for users to claim.
+# Check PV/PVC binding status
+kubectl get pv -o wide
+kubectl get pvc -o wide
 
-2. Dynamic
+# Delete (careful with reclaim policy!)
+kubectl delete pvc my-pvc
+kubectl delete pv my-pv
+```
 
-  * using `StorageClass`
+#### Reclaim Policies
+
+| Policy | Behavior | Use Case |
+|--------|----------|----------|
+| `Retain` | PV remains, requires manual cleanup | Production data you want to keep |
+| `Delete` | PV and storage deleted automatically | Temporary/test environments |
+| `Recycle` | ⚠️ Deprecated | Don't use |
+
+> **⚠️ Warning:** With `Delete` policy, deleting the PVC also deletes the underlying storage and ALL DATA!
+
+#### PV Provisioning
+
+1. **Static** - Admin manually creates PVs
+
+2. **Dynamic** - StorageClass automatically provisions PV when PVC is created
 
 #### PV Binding
 
@@ -900,15 +1299,40 @@ spec:
 
 ### Storage Class
 
-* define the type of the storage service
+* defines the type of storage and how to provision it dynamically
 
-* primary mechanism for `dynamic provisioning`, which automatically creates a PersistentVolume (PV) when a PersistentVolumeClaim (PVC) requests a specific class
+* primary mechanism for `dynamic provisioning` - automatically creates PV when PVC is created
 
-* `provisioner` that determines what `volume plugin` is used for provisioning PVs
+> **💡 Key Concept:** StorageClass = "Recipe" for creating storage
 
-* `parameters` describe the storage (e.g., disk type, filesystem, or encryption settings)
+#### Common Cloud Provisioners
 
+| Cloud | Provisioner | Volume Type |
+|-------|-------------|-------------|
+| AWS EBS | `ebs.csi.aws.com` | Block storage |
+| AWS EFS | `efs.csi.aws.com` | File storage (RWX) |
+| GCP PD | `pd.csi.storage.gke.io` | Persistent Disk |
+| Azure Disk | `disk.csi.azure.com` | Managed Disk |
+| Azure File | `file.csi.azure.com` | File share (RWX) |
+| Local | `kubernetes.io/no-provisioner` | Local disk |
 
+#### Binding Modes
+
+| Mode | Behavior |
+|------|----------|
+| `Immediate` | PV created immediately when PVC is created |
+| `WaitForFirstConsumer` | PV created only when Pod is scheduled (recommended for topology-aware) |
+
+#### Working with StorageClass
+
+```bash
+# List storage classes
+kubectl get storageclass
+kubectl get sc
+
+# Set default storage class
+kubectl patch storageclass <sc-name> -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+```
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -922,11 +1346,11 @@ reclaimPolicy: Retain # default value is Delete
 allowVolumeExpansion: true
 mountOptions:
   - discard # this might enable UNMAP / TRIM at the block storage layer
-volumeBindingMode: WaitForFirstConsumer             # `Immediate` mode indicates that volume binding and dynamic provisioning occurs once the PersistentVolumeClaim is created
-parameters:                                   # describe the storage (e.g., disk type, filesystem, or encryption settings)
+volumeBindingMode: WaitForFirstConsumer
+parameters:
   guaranteedReadWriteLatency: "true" # provider-specific
 
-allowedTopologies:      # Used with `WaitForFirstConsumer` to restrict the provisioning of volumes to specific topologies (e.g., only in us-central-1a or us-central-1b).
+allowedTopologies:      # Restrict provisioning to specific zones
 - matchLabelExpressions:
   - key: topology.kubernetes.io/zone
     values:
@@ -947,6 +1371,40 @@ allowedTopologies:      # Used with `WaitForFirstConsumer` to restrict the provi
 ## Pods
 
 * set of containers with shared namespaces and shared filesystem volumes.
+
+### Working with Pods
+
+```bash
+# List pods
+kubectl get pods
+kubectl get pods -o wide                    # More details (node, IP)
+kubectl get pods -A                         # All namespaces
+kubectl get pods -w                         # Watch for changes
+
+# Create pod
+kubectl run nginx --image=nginx --port=80
+kubectl run nginx --image=nginx --dry-run=client -o yaml > pod.yaml
+
+# Describe pod
+kubectl describe pod <pod-name>
+
+# Get pod logs
+kubectl logs <pod-name>
+kubectl logs <pod-name> -c <container>      # Specific container
+kubectl logs <pod-name> --previous          # Previous crashed instance
+kubectl logs -f <pod-name>                  # Follow/stream logs
+
+# Execute commands in pod
+kubectl exec -it <pod-name> -- /bin/sh
+kubectl exec <pod-name> -- ls /app
+
+# Delete pod
+kubectl delete pod <pod-name>
+kubectl delete pod <pod-name> --force --grace-period=0
+
+# Port forward
+kubectl port-forward pod/<pod-name> 8080:80
+```
 
 ### Containers Resources (cpu & memory)
 
@@ -989,45 +1447,46 @@ spec:
 
 ### Container HealthCheck
 
-1. Liveness probes 
+> **💡 Probe Decision Guide:**
+> - **Startup Probe** → Slow-starting apps (DB connections, large caches)
+> - **Liveness Probe** → Detect deadlocks, hangs, zombie processes
+> - **Readiness Probe** → Temporary unavailability (busy, warming up)
 
-* determine when to restart a container
+#### Probe Types Comparison
 
-* if a container fails its liveness probe repeatedly, the kubelet restarts the container.
+| Probe | Purpose | Action on Failure |
+|-------|---------|-------------------|
+| `startupProbe` | Is the app started? | Wait, then kill if fails |
+| `livenessProbe` | Is the app alive? | Restart container |
+| `readinessProbe` | Is the app ready for traffic? | Remove from Service endpoints |
 
-* do not wait for readiness probes to succeed, we can use startup probe in this case
+#### Probe Methods
 
+| Method | Use Case | Example |
+|--------|----------|---------|
+| `httpGet` | REST APIs, web apps | `path: /healthz, port: 8080` |
+| `tcpSocket` | TCP services (databases) | `port: 3306` |
+| `exec` | Custom scripts | `command: ["/bin/check.sh"]` |
+| `grpc` | gRPC services | `port: 50051` |
 
-2. Readiness probes
+#### Probe Timing Parameters
 
-* determine when a container is ready to accept traffic, end-end healthcheck lifecycle
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `initialDelaySeconds` | 0 | Wait before first probe |
+| `periodSeconds` | 10 | How often to probe |
+| `timeoutSeconds` | 1 | Probe timeout |
+| `successThreshold` | 1 | Consecutive successes needed |
+| `failureThreshold` | 3 | Consecutive failures before action |
 
-* used when the app establishing network connections, loading files, and warming caches
-
-* run on the container during its whole lifecycle
-
-3. startup probe
-
-* verifies whether the application within a container is started.
-
-* if configured, it disables liveness and readiness checks until it succeeds.
-
+> **⚠️ Common Mistakes:**
+> - Setting `initialDelaySeconds` too low (app not ready)
+> - Missing `startupProbe` for slow apps (liveness kills before ready)
+> - Liveness probe checking external dependencies (cascading failures!)
 
 ![healthcheck](./screenshots/healthcheck.png)
 
-
-> we can define the probes using
-
-  * command in the container 
-
-  * HTTP request
-
-  * [TCP socket](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-tcp-liveness-probe)
-
-  * [gRPC](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-grpc-liveness-probe)
-
-
-4. _examples_
+#### Probe Examples
 
 * 
 ```yaml
@@ -1317,6 +1776,29 @@ affinity:
 
 * best pratctice to use in `monitoring, log collection, proxy configuration`
 
+### Working with DaemonSets
+
+```bash
+# List daemonsets
+kubectl get daemonsets
+kubectl get ds -A                           # All namespaces
+
+# Create daemonset
+kubectl apply -f daemonset.yaml
+
+# Describe daemonset
+kubectl describe ds <daemonset-name>
+
+# Check rollout status
+kubectl rollout status ds/<daemonset-name>
+
+# Update daemonset image
+kubectl set image ds/<ds-name> <container>=<new-image>
+
+# Delete daemonset
+kubectl delete ds <daemonset-name>
+```
+
 ```yaml
 apiVersion: apps/v1
 kind: DaemonSet
@@ -1411,27 +1893,59 @@ EOF
 
 ## App Scaling
 
-* k8s support automatic scaling
+| Type | Method | K8s Resource |
+|------|--------|--------------|
+| **Vertical (Scale Up)** | Add more CPU/memory | VPA (Vertical Pod Autoscaler) |
+| **Horizontal (Scale Out)** | Add more pods | HPA, manual replicas |
 
-1. Vertical Scaling : scaling up
+> **💡 Rule of Thumb:**
+> - Stateless apps → Horizontal scaling (preferred)
+> - Stateful apps → Usually vertical, or horizontal with careful design
+> - Use HPA for automatic horizontal scaling
 
-    * adding more resources (memory,cpu)
+---
 
-2. Horizontal Scaling : scaling out
-
-    * adding more pods,nodes
-
-
-## Stateless ans Statful
+## Stateless vs Stateful Apps
 
 ![stateless&stateful](./screenshots/stateless&stateful.png)
 
-* Stateless app does not save the client data , scalled horizonatly, pods can be replaced or scaled up/down without affecting the application's functionality. managed by k8s `Deployments`
+| Aspect | Stateless | Stateful |
+|--------|-----------|----------|
+| **Data Storage** | No local state | Stores client data |
+| **Scaling** | Horizontal (easy) | Vertical (complex) |
+| **Pod Identity** | Interchangeable | Unique, stable identity |
+| **K8s Controller** | Deployment | StatefulSet |
+| **Examples** | Web servers, APIs | Databases, message queues |
 
-* Stateful app stores the client data, scaled verticaly only because we cant split the file system such as database apps, managed by k8s `StatefulSet`
+> **💡 StatefulSet Features:**
+> - Stable, unique pod names (web-0, web-1, web-2)
+> - Ordered deployment and scaling
+> - Persistent storage per pod (volumeClaimTemplates)
+> - Requires Headless Service (clusterIP: None)
 
-* StatefulSet requires a Headless Service to manage network identities assign `clusterIP: None` in `service` Makes it a Headless Service
+### Working with StatefulSets
 
+```bash
+# List statefulsets
+kubectl get statefulsets
+kubectl get sts -A                          # All namespaces
+
+# Describe statefulset
+kubectl describe sts <statefulset-name>
+
+# Scale statefulset
+kubectl scale sts <sts-name> --replicas=5
+
+# Check rollout status
+kubectl rollout status sts/<sts-name>
+
+# Rollback
+kubectl rollout undo sts/<sts-name>
+
+# Delete (pods deleted in reverse order)
+kubectl delete sts <sts-name>
+kubectl delete sts <sts-name> --cascade=orphan  # Keep pods
+```
 
 ```yaml
 apiVersion: apps/v1
@@ -1723,36 +2237,49 @@ spec:
 
 ## K8s Networking
 
-* The network plugin is configured to assign IP addresses to Pods.
-* The kube-apiserver is configured to assign IP addresses to Services.
-* The kubelet or the cloud-controller-manager is configured to assign IP addresses to Nodes.
+> **💡 Networking Fundamentals:**
+> - Every Pod gets its own IP address
+> - Pods can communicate with any other Pod without NAT
+> - Agents on a node can communicate with all Pods on that node
+> - Services provide stable endpoints for Pods
 
 ### Container Network Interface (CNI) 
 
-* provide network connectivity to Kubernetes Pods, enabling communication both within a node and across nodes in the cluster.
+* provides network connectivity to Kubernetes Pods
 
-* When a Pod is created, the CNI plugin creates and configures virtual network interfaces within the Pod's network namespace
+* CNI plugins assign unique IP addresses to Pods
 
-* CNI plugins assign unique IP addresses to Pods from a configured IP address pool, ensuring that each Pod has a routable address.
+#### CNI Comparison
 
-* configure routing rules, firewall rules, and other network settings to facilitate communication between Pods, and between Pods and external services.
+| CNI | Features | Best For |
+|-----|----------|----------|
+| **Calico** | Network policies, BGP, high performance | Production, security-focused |
+| **Cilium** | eBPF-based, observability, service mesh | Modern clusters, performance |
+| **Flannel** | Simple, overlay network | Learning, simple setups |
+| **Weave Net** | Encrypted, resilient | Hybrid/multi-cloud |
 
-> [__plugins examples__](https://kubernetes.io/docs/concepts/cluster-administration/addons/#networking-and-network-policy)
+> **💡 Production Choice:** Calico or Cilium for most production workloads
 
-* Flannel: A simple and lightweight CNI plugin often used for basic overlay networking.
-
-* Calico: Offers advanced network policy enforcement and supports various networking modes.
-
-* Cilium: Leverages eBPF for high-performance networking, security, and observability.
-
-* Weave Net: Provides a simple and resilient overlay network for containers.
-
+---
 
 ### DNS
 
-* k8s creates DNS records for Services and Pods
+* K8s automatically creates DNS records for Services and Pods
+* CoreDNS is the default DNS server
 
-* DNS queries may be expanded using the Pod's `/etc/resolv.conf`. kubelet configures this file for each Pod
+#### DNS Quick Reference
+
+| Type | DNS Name Pattern |
+|------|------------------|
+| **Service** | `<service>.<namespace>.svc.cluster.local` |
+| **Pod** | `<pod-ip-dashed>.<namespace>.pod.cluster.local` |
+| **StatefulSet Pod** | `<pod-name>.<service>.<namespace>.svc.cluster.local` |
+
+```bash
+# Test DNS resolution from a pod
+kubectl run test --image=busybox:1.28 --rm -it -- nslookup kubernetes
+kubectl run test --image=busybox:1.28 --rm -it -- nslookup <service-name>.<namespace>
+```
 
 ### DNS Records
 
@@ -1932,6 +2459,34 @@ spec:
 * default protocol for Services is TCP
 
 * service without selector we can use `EndpointSlice` which represents a subset (a slice) of the backing network endpoints for a Service.
+
+#### Working with Services
+
+```bash
+# List services
+kubectl get services
+kubectl get svc -A                          # All namespaces
+
+# Create service (expose deployment)
+kubectl expose deployment nginx --port=80 --type=ClusterIP
+kubectl expose deployment nginx --port=80 --type=NodePort
+kubectl expose deployment nginx --port=80 --type=LoadBalancer
+
+# Describe service
+kubectl describe svc <service-name>
+
+# Get endpoints
+kubectl get endpoints <service-name>
+
+# Delete service
+kubectl delete svc <service-name>
+
+# Port forward to service
+kubectl port-forward svc/<service-name> 8080:80
+
+# Get service URL (minikube)
+minikube service <service-name> --url
+```
 
 ```yaml
 apiVersion: discovery.k8s.io/v1
@@ -2239,5 +2794,421 @@ spec:
     name: external-lb
 ```
 
+
+---
+
+## Jobs & CronJobs
+
+### Job
+
+* Runs one or more Pods to completion (batch processing)
+* Pods are not automatically deleted after completion
+* Tracks successful completions
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi
+spec:
+  completions: 5        # Number of successful completions required
+  parallelism: 2        # How many pods run in parallel
+  backoffLimit: 4       # Number of retries before marking job as failed
+  activeDeadlineSeconds: 100  # Max runtime in seconds
+  template:
+    spec:
+      containers:
+      - name: pi
+        image: perl:5.34.0
+        command: ["perl",  "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+      restartPolicy: Never  # Required: Never or OnFailure
+```
+
+### CronJob
+
+* Runs Jobs on a scheduled basis (like cron in Linux)
+* Uses cron expression format: `minute hour day-of-month month day-of-week`
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hello
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  concurrencyPolicy: Forbid  # Allow, Forbid, or Replace
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  startingDeadlineSeconds: 200  # Deadline to start if missed
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: hello
+            image: busybox:1.28
+            command: ["/bin/sh", "-c", "date; echo Hello from K8s"]
+          restartPolicy: OnFailure
+```
+
+| Concurrency Policy | Description |
+|---|---|
+| `Allow` | Multiple Jobs can run concurrently (default) |
+| `Forbid` | Skip new Job if previous is still running |
+| `Replace` | Cancel current Job and start new one |
+
+---
+
+## Taints & Tolerations
+
+* **Taints** are applied to nodes to repel pods
+* **Tolerations** are applied to pods to allow scheduling on tainted nodes
+
+### Taint Effects
+
+| Effect | Description |
+|---|---|
+| `NoSchedule` | Pods without matching toleration won't be scheduled |
+| `PreferNoSchedule` | Scheduler tries to avoid, but not guaranteed |
+| `NoExecute` | Evicts existing pods and prevents new scheduling |
+
+### Commands
+
+```bash
+# Add taint to node
+kubectl taint nodes node1 key=value:NoSchedule
+
+# Remove taint
+kubectl taint nodes node1 key=value:NoSchedule-
+
+# View node taints
+kubectl describe node node1 | grep Taints
+```
+
+### Pod Toleration
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  tolerations:
+  - key: "key1"
+    operator: "Equal"
+    value: "value1"
+    effect: "NoSchedule"
+  # OR tolerate all taints with specific key
+  - key: "key1"
+    operator: "Exists"
+    effect: "NoSchedule"
+  containers:
+  - name: nginx
+    image: nginx
+```
+
+> **Note**: Control plane nodes have taint `node-role.kubernetes.io/control-plane:NoSchedule` by default
+
+---
+
+## Resource Quotas & LimitRanges
+
+### ResourceQuota
+
+* Limits aggregate resource consumption per namespace
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: dev
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "8"
+    limits.memory: 8Gi
+    pods: "10"
+    services: "5"
+    secrets: "10"
+    configmaps: "10"
+    persistentvolumeclaims: "4"
+```
+
+### LimitRange
+
+* Sets default, min, max resource constraints for pods/containers in a namespace
+
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-memory-limits
+  namespace: dev
+spec:
+  limits:
+  - default:           # Default limits
+      cpu: 500m
+      memory: 512Mi
+    defaultRequest:    # Default requests
+      cpu: 250m
+      memory: 256Mi
+    max:               # Maximum allowed
+      cpu: "2"
+      memory: 2Gi
+    min:               # Minimum required
+      cpu: 100m
+      memory: 128Mi
+    type: Container
+```
+
+---
+
+## Horizontal Pod Autoscaler (HPA)
+
+* Automatically scales the number of pod replicas based on observed metrics
+* Requires Metrics Server to be installed
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: php-apache
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: php-apache
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: AverageValue
+        averageValue: 100Mi
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait before scaling down
+    scaleUp:
+      stabilizationWindowSeconds: 0
+```
+
+### Commands
+
+```bash
+# Create HPA imperatively
+kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10
+
+# View HPA status
+kubectl get hpa
+
+# View detailed metrics
+kubectl describe hpa php-apache
+```
+
+---
+
+## Helm
+
+* Package manager for Kubernetes
+* Uses **Charts** (packages) to deploy applications
+
+### Basic Commands
+
+```bash
+# Add a repository
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
+# Search for charts
+helm search repo nginx
+helm search hub wordpress  # Search Artifact Hub
+
+# Install a chart
+helm install my-release bitnami/nginx
+helm install my-release bitnami/nginx -f values.yaml
+helm install my-release bitnami/nginx --set service.type=NodePort
+
+# List releases
+helm list
+helm list --all-namespaces
+
+# Upgrade a release
+helm upgrade my-release bitnami/nginx --set replicaCount=3
+
+# Rollback
+helm rollback my-release 1  # Rollback to revision 1
+
+# Uninstall
+helm uninstall my-release
+
+# View release history
+helm history my-release
+```
+
+### Chart Structure
+
+```
+mychart/
+├── Chart.yaml          # Chart metadata
+├── values.yaml         # Default configuration values
+├── charts/             # Dependent charts
+├── templates/          # Kubernetes manifests (Go templates)
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── _helpers.tpl    # Template helpers
+│   └── NOTES.txt       # Post-install notes
+└── README.md
+```
+
+---
+
+## kubectl Cheat Sheet
+
+### Cluster Info
+
+```bash
+kubectl cluster-info
+kubectl get nodes -o wide
+kubectl get componentstatuses
+kubectl api-resources
+kubectl api-versions
+```
+
+### Resource Management
+
+```bash
+# Get resources
+kubectl get pods -A                    # All namespaces
+kubectl get pods -o wide               # More details
+kubectl get pods -o yaml               # YAML output
+kubectl get pods --show-labels
+kubectl get pods -l app=nginx          # Filter by label
+kubectl get pods --field-selector=status.phase=Running
+
+# Describe resources
+kubectl describe pod <pod-name>
+kubectl describe node <node-name>
+
+# Create/Apply
+kubectl apply -f manifest.yaml
+kubectl create -f manifest.yaml
+kubectl apply -f ./my-manifests/       # Apply entire directory
+
+# Delete
+kubectl delete -f manifest.yaml
+kubectl delete pod <pod-name> --grace-period=0 --force
+
+# Edit
+kubectl edit deployment <name>
+kubectl patch deployment <name> -p '{"spec":{"replicas":3}}'
+```
+
+### Debugging
+
+```bash
+# Logs
+kubectl logs <pod-name>
+kubectl logs <pod-name> -c <container>  # Specific container
+kubectl logs <pod-name> --previous      # Previous instance
+kubectl logs -f <pod-name>              # Follow logs
+kubectl logs -l app=nginx               # By label
+
+# Exec into pod
+kubectl exec -it <pod-name> -- /bin/sh
+kubectl exec -it <pod-name> -c <container> -- /bin/bash
+
+# Port forwarding
+kubectl port-forward pod/<pod-name> 8080:80
+kubectl port-forward svc/<svc-name> 8080:80
+
+# Copy files
+kubectl cp <pod-name>:/path/to/file ./local-file
+kubectl cp ./local-file <pod-name>:/path/to/file
+```
+
+### Quick Creates
+
+```bash
+# Run pod
+kubectl run nginx --image=nginx --port=80
+
+# Create deployment
+kubectl create deployment nginx --image=nginx --replicas=3
+
+# Expose deployment
+kubectl expose deployment nginx --port=80 --type=NodePort
+
+# Create configmap
+kubectl create configmap my-config --from-literal=key=value
+
+# Create secret
+kubectl create secret generic my-secret --from-literal=password=pass123
+```
+
+---
+
+## Troubleshooting
+
+### Pod Issues
+
+| Issue | Commands to Debug |
+|-------|-------------------|
+| Pod stuck in `Pending` | `kubectl describe pod <name>` - Check Events for scheduling issues |
+| Pod stuck in `ContainerCreating` | `kubectl describe pod <name>` - Check for volume/image issues |
+| Pod in `CrashLoopBackOff` | `kubectl logs <pod> --previous` - Check previous container logs |
+| Pod in `ImagePullBackOff` | `kubectl describe pod <name>` - Verify image name and registry auth |
+| Pod `OOMKilled` | Increase memory limits or optimize application |
+
+### Common Debugging Steps
+
+```bash
+# 1. Check pod status and events
+kubectl get pods -o wide
+kubectl describe pod <pod-name>
+
+# 2. Check logs
+kubectl logs <pod-name>
+kubectl logs <pod-name> --previous
+
+# 3. Check resource usage
+kubectl top pods
+kubectl top nodes
+
+# 4. Run debug container (K8s 1.23+)
+kubectl debug -it <pod-name> --image=busybox --target=<container>
+
+# 5. Check endpoints for services
+kubectl get endpoints <service-name>
+
+# 6. Test DNS resolution
+kubectl run test --image=busybox:1.28 --rm -it -- nslookup kubernetes
+
+# 7. Check network policies
+kubectl get networkpolicies -A
+```
+
+### Node Issues
+
+```bash
+# Check node status
+kubectl get nodes
+kubectl describe node <node-name>
+
+# Check kubelet logs (on the node)
+journalctl -u kubelet -f
+
+# Check system resources
+kubectl top nodes
+```
 
 
