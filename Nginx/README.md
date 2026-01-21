@@ -3,7 +3,34 @@
 
 > free , open source , BSD license , developed by Igor Sysoev to solve _C10K_ problem "challenge to handel 10000 concurent connection" _concurent connection is multiple connections at the same time_ 
 
-> ## Used as 
+---
+
+## Table of Contents
+
+1. [Use Cases](#used-as)
+   - [Web Server](#1-webserver)
+   - [Load Balancer](#2-load-balancer)
+   - [Reverse Proxy](#3-reverse-proxy)
+   - [Forward Proxy](#4-forward-proxy)
+   - [Caching](#5-caching)
+2. [Configuration](#nginx-configuration)
+   - [Directory Structure](#nginx-directory-structure)
+3. [Firewall Setup](#using-firewall)
+4. [Redirect & Rewrite](#redirect-and-rewrite)
+5. [Security](#security)
+   - [SSL Certificates](#creating-certificates)
+   - [Basic Authentication](#restricting-access-with-http-basic-authentication)
+   - [IP Restrictions](#access-restriction-by-ip-address)
+6. [Rate Limiting](#rate-limit)
+7. [Compression](#compression)
+8. [WebSocket Proxying](#websocket-proxying)
+9. [Monitoring & Troubleshooting](#monitoring-troubleshooting)
+10. [Common Errors](#common-errors)
+11. [References](#references)
+
+---
+
+## Used as 
 
 ## 1. Webserver : 
 * is a system (hardware or software or combination) that delivers web content (media,httml,css,php,python,ruby) to the user over the internet. 
@@ -903,7 +930,116 @@ location /nginx_status {
                16630948 16630948 31070465
         Reading: 11 Writing: 218 Waiting: 38
 
+---
+
+## WebSocket Proxying
+
+WebSocket requires special headers for the Upgrade mechanism.
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+upstream websocket {
+    server backend1.example.com:8080;
+    server backend2.example.com:8080;
+}
+
+server {
+    listen 80;
+    server_name ws.example.com;
+
+    location /ws {
+        proxy_pass http://websocket;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
         
+        # Timeouts for long-lived connections
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+```
+
+> **Key Headers:**
+> - `Upgrade: websocket` - Tells the server to switch protocols
+> - `Connection: upgrade` - Required for the upgrade mechanism
+
+---
+
+## Common Errors
+
+### 502 Bad Gateway
+
+**Causes:**
+- Backend server is down or unreachable
+- Backend is too slow to respond
+- Firewall blocking connection
+
+**Solutions:**
+```nginx
+# Increase timeout
+proxy_connect_timeout 60s;
+proxy_read_timeout 60s;
+
+# Check upstream health
+upstream backend {
+    server backend1:8080 max_fails=3 fail_timeout=30s;
+    server backend2:8080 backup;
+}
+```
+
+### 504 Gateway Timeout
+
+**Causes:**
+- Backend processing takes too long
+- Network latency issues
+
+**Solutions:**
+```nginx
+# Increase timeouts
+proxy_connect_timeout 300s;
+proxy_send_timeout 300s;
+proxy_read_timeout 300s;
+```
+
+### 413 Request Entity Too Large
+
+**Cause:** Upload file exceeds limit
+
+**Solution:**
+```nginx
+# In http, server, or location block
+client_max_body_size 100M;
+```
+
+### Connection Refused / Cannot Connect
+
+**Debug Steps:**
+```bash
+# 1. Check if nginx is running
+systemctl status nginx
+
+# 2. Check nginx config syntax
+nginx -t
+
+# 3. Check listening ports
+ss -tlnp | grep nginx
+
+# 4. Check error logs
+tail -f /var/log/nginx/error.log
+
+# 5. Test backend connectivity
+curl -v http://backend:port
+```
+
+---
+
 ## References
 * [nginx_documentation](https://nginx.org/en/docs/index.html)
 
